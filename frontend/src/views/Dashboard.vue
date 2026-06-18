@@ -36,9 +36,26 @@
       <span class="refresh-info">
         最近更新: {{ lastUpdate || '--' }}
       </span>
-      <button class="refresh-btn" @click="loadData" :disabled="loading">
-        {{ loading ? '加载中...' : '刷新数据' }}
-      </button>
+      <div class="refresh-bar-right">
+        <div class="auto-feed-switch" @click="autoFeedEnabled = !autoFeedEnabled">
+          <span class="switch-label">自动投喂</span>
+          <div :class="['switch-track', { active: autoFeedEnabled }]">
+            <div class="switch-thumb"></div>
+          </div>
+          <span :class="['switch-status', autoFeedEnabled ? 'on' : 'off']">
+            {{ autoFeedEnabled ? '已开启' : '已关闭' }}
+          </span>
+        </div>
+        <button class="refresh-btn" @click="loadData" :disabled="loading">
+          {{ loading ? '加载中...' : '刷新数据' }}
+        </button>
+      </div>
+    </div>
+
+    <div v-if="autoFeedEnabled" class="auto-feed-info">
+      <span class="info-tag">溶氧阈值: &lt;{{ OXYGEN_THRESHOLD }} mg/L</span>
+      <span class="info-tag">定时投喂: {{ SCHEDULED_HOUR }}:{{ String(SCHEDULED_MINUTE).padStart(2, '0') }}</span>
+      <span class="info-tag">冷却间隔: 10 分钟</span>
     </div>
 
     <div class="main-content">
@@ -57,12 +74,36 @@
         </div>
       </section>
 
-      <section class="panel table-panel">
-        <div class="panel-header">
-          <h2>实时数据监测</h2>
-        </div>
-        <DataTable :cages="cages" @feed-success="onFeedSuccess" />
-      </section>
+      <div class="right-column">
+        <section class="panel table-panel">
+          <div class="panel-header">
+            <h2>实时数据监测</h2>
+          </div>
+          <DataTable :cages="cages" @feed-success="onFeedSuccess" />
+        </section>
+
+        <section v-if="autoFeedLog.length" class="panel log-panel">
+          <div class="panel-header">
+            <h2>自动投喂记录</h2>
+            <span class="tip">最近 {{ autoFeedLog.length }} 条</span>
+          </div>
+          <div class="log-list">
+            <div
+              v-for="(log, idx) in autoFeedLog"
+              :key="idx"
+              :class="['log-item', log.success ? 'success' : 'failed']"
+            >
+              <span class="log-time">{{ log.time }}</span>
+              <span class="log-cage">{{ log.cageName }}</span>
+              <span class="log-reason">{{ log.reason }}</span>
+              <span class="log-amount">{{ log.amount }}kg</span>
+              <span :class="['log-result', log.success ? 'ok' : 'fail']">
+                {{ log.success ? '成功' : '失败' }}
+              </span>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
 
     <footer class="dashboard-footer">
@@ -76,11 +117,20 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import CageViewer3D from '../components/CageViewer3D.vue'
 import DataTable from '../components/DataTable.vue'
 import { fetchCages } from '../api/cage.js'
+import { useAutoFeed } from '../composables/useAutoFeed.js'
 
 const cages = ref([])
 const loading = ref(false)
 const lastUpdate = ref('')
 let timer = null
+
+const {
+  enabled: autoFeedEnabled,
+  autoFeedLog,
+  OXYGEN_THRESHOLD,
+  SCHEDULED_HOUR,
+  SCHEDULED_MINUTE,
+} = useAutoFeed(cages)
 
 const normalCount = computed(() => cages.value.filter((c) => c.status === 'normal').length)
 const warningCount = computed(() => cages.value.filter((c) => c.status === 'warning').length)
@@ -207,6 +257,14 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   background: rgba(0, 0, 0, 0.2);
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.refresh-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 .refresh-info {
@@ -231,6 +289,78 @@ onBeforeUnmount(() => {
 
 .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.auto-feed-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.switch-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 500;
+}
+
+.switch-track {
+  width: 40px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 11px;
+  position: relative;
+  transition: background 0.3s;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.switch-track.active {
+  background: rgba(0, 212, 170, 0.4);
+  border-color: rgba(0, 212, 170, 0.6);
+}
+
+.switch-thumb {
+  width: 16px;
+  height: 16px;
+  background: #8899aa;
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: all 0.3s;
+}
+
+.switch-track.active .switch-thumb {
+  left: 20px;
+  background: #00d4aa;
+  box-shadow: 0 0 6px rgba(0, 212, 170, 0.6);
+}
+
+.switch-status {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.switch-status.on { color: #00d4aa; }
+.switch-status.off { color: rgba(255, 255, 255, 0.4); }
+
+.auto-feed-info {
+  padding: 8px 32px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: rgba(0, 212, 170, 0.04);
+  border-bottom: 1px solid rgba(0, 212, 170, 0.08);
+}
+
+.info-tag {
+  font-size: 12px;
+  color: rgba(0, 212, 170, 0.75);
+  background: rgba(0, 212, 170, 0.1);
+  padding: 2px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 212, 170, 0.15);
+}
+
 .main-content {
   flex: 1;
   display: grid;
@@ -241,6 +371,13 @@ onBeforeUnmount(() => {
 
 @media (max-width: 1100px) {
   .main-content { grid-template-columns: 1fr; }
+}
+
+.right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
 }
 
 .panel {
@@ -304,7 +441,6 @@ onBeforeUnmount(() => {
 .dot-alarm { background: #ff4444; }
 
 .table-panel {
-  min-height: 480px;
   padding: 0;
 }
 
@@ -312,6 +448,60 @@ onBeforeUnmount(() => {
   flex: 1;
   padding: 16px 20px;
   overflow: auto;
+}
+
+.log-panel {
+  max-height: 260px;
+}
+
+.log-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 20px;
+}
+
+.log-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.log-item.success .log-result.ok { color: #00d4aa; }
+.log-item.failed .log-result.fail { color: #ff4444; }
+
+.log-time {
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+  min-width: 140px;
+}
+
+.log-cage {
+  color: #fff;
+  font-weight: 500;
+  min-width: 70px;
+}
+
+.log-reason {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.log-amount {
+  color: rgba(0, 212, 170, 0.8);
+  font-weight: 600;
+  min-width: 40px;
+}
+
+.log-result {
+  font-weight: 600;
+  min-width: 30px;
 }
 
 .dashboard-footer {
